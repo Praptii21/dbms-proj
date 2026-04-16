@@ -1,0 +1,11 @@
+# Root ignores
+hospital-management/frontend/node_modules/
+hospital-management/frontend/dist/
+hospital-management/backend/__pycache__/
+hospital-management/hospital.db
+
+# Generic
+.vscode/
+.DS_Store
+*.pyc
+node_modules/
