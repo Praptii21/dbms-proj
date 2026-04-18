@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getTranslation } from '../i18n';
+import api from '../api/axios';
 
 // Helper function to convert browser 24hr "14:30" string to 12hr "02:30 PM"
 const formatAMPM = (time24) => {
@@ -12,44 +13,67 @@ const formatAMPM = (time24) => {
   return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
 };
 
-const Appointments = ({ appointments, setAppointments, lang }) => {
+const Appointments = ({ appointments, setAppointments, lang, doctors }) => {
   const t = (key) => getTranslation(lang, 'appointments', key);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [rescheduleId, setRescheduleId] = useState(null);
   const [tempDateTime, setTempDateTime] = useState({ date: '', time: '' });
-  const [newApt, setNewApt] = useState({ date: '', time: '', doctor: 'Dr. Marcus Webb', type: '' });
+  const [newApt, setNewApt] = useState({ date: '', time: '', doctor: '', type: '' });
 
-  const handleCancel = (id) => setAppointments(appointments.filter(apt => apt.id !== id));
+  const handleCancel = async (id) => {
+    try {
+      await api.delete(`/api/appointments/${id}`);
+      setAppointments(appointments.filter(apt => apt.id !== id));
+    } catch (error) {
+      console.error("Error canceling appointment:", error);
+    }
+  };
   
   const openRescheduleModal = (id) => {
     setRescheduleId(id);
     setTempDateTime({ date: '', time: '' });
   };
 
-  const handleRescheduleSubmit = (e) => {
+  const handleRescheduleSubmit = async (e) => {
     e.preventDefault();
     if (!tempDateTime.date || !tempDateTime.time) return alert(t('alert'));
     const formattedDate = new Date(tempDateTime.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    setAppointments(appointments.map(apt => apt.id === rescheduleId ? { ...apt, date: formattedDate, time: formatAMPM(tempDateTime.time) } : apt));
-    setRescheduleId(null);
+    // Find existing apt to preserve other fields
+    const existing = appointments.find(a => a.id === rescheduleId);
+    if (!existing) return;
+
+    try {
+      const updatedData = { ...existing, date: formattedDate, time: formatAMPM(tempDateTime.time) };
+      const response = await api.put(`/api/appointments/${rescheduleId}`, updatedData);
+      setAppointments(appointments.map(apt => apt.id === rescheduleId ? response.data : apt));
+      setRescheduleId(null);
+    } catch (error) {
+      console.error("Error rescheduling:", error);
+    }
   };
 
-  const handleScheduleSubmit = (e) => {
+  const handleScheduleSubmit = async (e) => {
     e.preventDefault();
-    if (!newApt.date || !newApt.type) return alert(t('alert'));
+    if (!newApt.date || !newApt.type || !newApt.doctor) return alert(t('alert'));
     const formattedDate = new Date(newApt.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    setAppointments([...appointments, { 
-      id: Date.now(), 
-      date: formattedDate, 
-      time: formatAMPM(newApt.time), 
-      doctor: newApt.doctor, 
-      type: newApt.type, 
-      status: 'Active' 
-    }]);
-    setIsModalOpen(false);
+    try {
+      const payload = { 
+        date: formattedDate, 
+        time: formatAMPM(newApt.time), 
+        doctor: newApt.doctor, 
+        type: newApt.type, 
+        status: 'Active' 
+      };
+      const response = await api.post('/api/appointments/', payload);
+      setAppointments([...appointments, response.data]);
+      setIsModalOpen(false);
+      setNewApt({ date: '', time: '', doctor: '', type: '' });
+    } catch (error) {
+      console.error("Error scheduling:", error);
+    }
   };
 
   return (
@@ -62,7 +86,12 @@ const Appointments = ({ appointments, setAppointments, lang }) => {
             <h2 style={{ marginBottom: '1.5rem', color: 'var(--primary-dark)' }}>{t('modalTitle')}</h2>
             <form onSubmit={handleScheduleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div><label style={styles.label}>{t('modalType')}</label><input type="text" style={styles.input} value={newApt.type} onChange={(e) => setNewApt({...newApt, type: e.target.value})} placeholder="e.g. Heart Checkup" /></div>
-              <div><label style={styles.label}>{t('modalDoc')}</label><select style={styles.input} value={newApt.doctor} onChange={(e) => setNewApt({...newApt, doctor: e.target.value})}><option>Dr. Marcus Webb</option><option>Dr. Sarah Jenkins</option><option>Dr. Alyssa Chen</option><option>Dr. Robert Frost</option></select></div>
+              <div><label style={styles.label}>{t('modalDoc')}</label>
+                <select style={styles.input} value={newApt.doctor} onChange={(e) => setNewApt({...newApt, doctor: e.target.value})}>
+                  <option value="">Select Doctor</option>
+                  {doctors.map(doc => <option key={doc.id} value={doc.name}>{doc.name}</option>)}
+                </select>
+              </div>
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <div style={{ flex: 1 }}><label style={styles.label}>{t('modalDate')}</label><input type="date" style={styles.input} value={newApt.date} onChange={(e) => setNewApt({...newApt, date: e.target.value})} /></div>
                 <div style={{ flex: 1 }}><label style={styles.label}>{t('modalTime')}</label><input type="time" style={styles.input} value={newApt.time} onChange={(e) => setNewApt({...newApt, time: e.target.value})} /></div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import api from './api/axios';
 import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
 import Patients from './pages/Patients';
@@ -38,23 +39,41 @@ function App() {
   const [theme, setTheme] = useLocalStorage('nova_theme', 'light');
   const [lang, setLang] = useLocalStorage('nova_lang', 'en');
 
-  // Persistent Mock Database
-  const [patients, setPatients] = useLocalStorage('nova_patients', [
-    { id: 'PT-001', name: 'Eleanor Shellstrop', age: 34, gender: 'Female', status: 'Admitted', ward: 'Cardiology' },
-    { id: 'PT-002', name: 'Chidi Anagonye', age: 36, gender: 'Male', status: 'Discharged', ward: 'Neurology' },
-  ]);
+  // Real Database State
+  const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [balance, setBalance] = useState(0);
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [appointments, setAppointments] = useLocalStorage('nova_appointments', [
-    { id: 1, date: 'Oct 24, 2024', time: '10:00 AM', doctor: 'Dr. Sarah Jenkins', type: 'Heart Checkup', status: 'Active' },
-  ]);
+  // Fetch initial data from backend
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [patientsRes, doctorsRes, appointmentsRes, billingRes, balanceRes] = await Promise.all([
+          api.get('/api/patients/'),
+          api.get('/api/doctors/'),
+          api.get('/api/appointments/'),
+          api.get('/api/billing/'),
+          api.get('/api/billing/balance')
+        ]);
 
-  // Keys updated to `_v2` to force a cache reset for local users so the new Rupee values populate
-  const [balance, setBalance] = useLocalStorage('nova_balance_v2', 15200.00);
-  
-  const [invoices, setInvoices] = useLocalStorage('nova_invoices_v2', [
-    { id: 'INV-29001', date: 'Sep 14, 2024', service: 'General Consultation', amount: '₹1200.00', status: 'Paid' },
-    { id: 'INV-29084', date: 'Oct 02, 2024', service: 'Blood Work Panel', amount: '₹15200.00', status: 'Pending' },
-  ]);
+        setPatients(patientsRes.data);
+        setDoctors(doctorsRes.data);
+        setAppointments(appointmentsRes.data);
+        setInvoices(billingRes.data);
+        setBalance(balanceRes.data.balance);
+      } catch (error) {
+        console.error("Error fetching data from backend:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
@@ -62,11 +81,13 @@ function App() {
   }, [theme]);
 
   const renderPage = () => {
+    if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'80vh'}}>Loading Database...</div>;
+
     switch (currentPath) {
       case '/': return <Landing onNavigate={setCurrentPath} lang={lang} />;
       case '/patients': return <Patients patients={patients} setPatients={setPatients} lang={lang} />;
-      case '/doctors': return <Doctors lang={lang} appointments={appointments} setAppointments={setAppointments} />;
-      case '/appointments': return <Appointments appointments={appointments} setAppointments={setAppointments} lang={lang} />;
+      case '/doctors': return <Doctors doctors={doctors} setDoctors={setDoctors} lang={lang} appointments={appointments} setAppointments={setAppointments} />;
+      case '/appointments': return <Appointments appointments={appointments} setAppointments={setAppointments} lang={lang} doctors={doctors} />;
       case '/billing': return <Billing balance={balance} setBalance={setBalance} invoices={invoices} setInvoices={setInvoices} lang={lang} />;
       default: return <Landing onNavigate={setCurrentPath} lang={lang} />;
     }

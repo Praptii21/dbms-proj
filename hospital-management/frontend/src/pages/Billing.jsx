@@ -2,16 +2,33 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import Table from '../components/Table';
 import { getTranslation } from '../i18n';
+import api from '../api/axios';
 
 const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
   const t = (key) => getTranslation(lang, 'billing', key);
   const [editInvoice, setEditInvoice] = useState(null);
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (balance > 0) {
-      setBalance(0);
-      setInvoices(invoices.map(inv => ({...inv, status: 'Paid'})));
-      alert(t('payAlertSuccess'));
+      try {
+        // Find all pending invoices
+        const pending = invoices.filter(inv => inv.status !== 'Paid');
+        await Promise.all(pending.map(inv => 
+          api.put(`/api/billing/${inv.id}`, { ...inv, status: 'Paid' })
+        ));
+        
+        // Refresh balance and invoices from server
+        const [billingRes, balanceRes] = await Promise.all([
+          api.get('/api/billing/'),
+          api.get('/api/billing/balance')
+        ]);
+        
+        setInvoices(billingRes.data);
+        setBalance(balanceRes.data.balance);
+        alert(t('payAlertSuccess'));
+      } catch (error) {
+        console.error("Payment failed", error);
+      }
     } else {
       alert(t('payAlertFail'));
     }
@@ -30,15 +47,19 @@ const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
     URL.revokeObjectURL(url);
   };
 
-  const handleEditSubmit = (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault();
-    setInvoices(invoices.map(inv => inv.id === editInvoice.id ? editInvoice : inv));
-    // Updated to strip the INR explicitly for math calculation instead of dollar
-    const newBalance = invoices.map(i => i.id === editInvoice.id ? editInvoice : i)
-                               .filter(i => i.status !== 'Paid')
-                               .reduce((sum, item) => sum + parseFloat(item.amount.replace('₹', '')), 0);
-    setBalance(newBalance);
-    setEditInvoice(null);
+    try {
+      const response = await api.put(`/api/billing/${editInvoice.id}`, editInvoice);
+      setInvoices(invoices.map(inv => inv.id === editInvoice.id ? response.data : inv));
+      
+      // Refresh balance
+      const balanceRes = await api.get('/api/billing/balance');
+      setBalance(balanceRes.data.balance);
+      setEditInvoice(null);
+    } catch (error) {
+      console.error("Update failed", error);
+    }
   };
 
   return (

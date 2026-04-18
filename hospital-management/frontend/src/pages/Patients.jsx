@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import Table from '../components/Table';
 import { getTranslation } from '../i18n';
+import api from '../api/axios';
 
 const Patients = ({ patients, setPatients, lang }) => {
   const t = (key) => getTranslation(lang, 'patients', key);
@@ -9,7 +10,7 @@ const Patients = ({ patients, setPatients, lang }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newPatient, setNewPatient] = useState({ name: '', age: '', gender: 'Female', status: 'Triage', ward: 'General' });
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newPatient.name || !newPatient.age) return alert("Please fill out all fields.");
     
@@ -18,10 +19,15 @@ const Patients = ({ patients, setPatients, lang }) => {
       return alert("Invalid Entry: Patient 'Name' must only contain alphabets (no numbers or special characters).");
     }
 
-    const id = `PT-${Math.floor(100 + Math.random() * 900)}`;
-    setPatients([{ id, ...newPatient }, ...patients]);
-    setIsModalOpen(false);
-    setNewPatient({ name: '', age: '', gender: 'Female', status: 'Triage', ward: 'General' });
+    try {
+      const response = await api.post('/api/patients/', newPatient);
+      setPatients([response.data, ...patients]);
+      setIsModalOpen(false);
+      setNewPatient({ name: '', age: '', gender: 'Female', status: 'Triage', ward: 'General' });
+    } catch (error) {
+      console.error("Error adding patient:", error);
+      alert("Failed to add patient to database.");
+    }
   };
 
   return (

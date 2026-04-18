@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getTranslation } from '../i18n';
+import api from '../api/axios';
 
-const Doctors = ({ lang, appointments, setAppointments }) => {
+const Doctors = ({ lang, appointments, setAppointments, doctors }) => {
   const t = (key) => getTranslation(lang, 'doctors', key);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -10,40 +11,34 @@ const Doctors = ({ lang, appointments, setAppointments }) => {
   
   const [newApt, setNewApt] = useState({ date: '', time: '', type: '' });
 
-  const directory = [
-    { name: 'Dr. Sarah Jenkins', spec: 'Cardiology', exp: '15 Years', status: 'Available' },
-    { name: 'Dr. Marcus Webb', spec: 'Neurology', exp: '11 Years', status: 'Booked' },
-    { name: 'Dr. Alyssa Chen', spec: 'Pediatrics', exp: '8 Years', status: 'Available' },
-    { name: 'Dr. Robert Frost', spec: 'Orthopedics', exp: '22 Years', status: 'Available' },
-    { name: 'Dr. Emily Carter', spec: 'Dermatology', exp: '12 Years', status: 'Booked' },
-    { name: 'Dr. James Mitchell', spec: 'General Surgery', exp: '19 Years', status: 'Available' },
-    { name: 'Dr. Priya Sharma', spec: 'Oncology', exp: '14 Years', status: 'Booked' },
-    { name: 'Dr. David Kim', spec: 'Psychiatry', exp: '9 Years', status: 'Available' }
-  ];
-
   const handleOpenBooking = (docName) => {
     setSelectedDoctor(docName);
     setIsModalOpen(true);
   };
 
-  const handleBookingSubmit = (e) => {
+  const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!newApt.date || !newApt.time || !newApt.type) return alert("Please fill out all scheduling details.");
     
     const formattedDate = new Date(newApt.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    setAppointments([...appointments, {
-      id: Date.now(),
-      date: formattedDate,
-      time: newApt.time,
-      doctor: selectedDoctor,
-      type: newApt.type,
-      status: 'Active'
-    }]);
+    try {
+      const payload = {
+        date: formattedDate,
+        time: newApt.time,
+        doctor: selectedDoctor,
+        type: newApt.type,
+        status: 'Active'
+      };
+      const response = await api.post('/api/appointments/', payload);
+      setAppointments([...appointments, response.data]);
 
-    alert(`Successfully booked a visit with ${selectedDoctor} for ${formattedDate}! Check your Appointments tab.`);
-    setIsModalOpen(false);
-    setNewApt({ date: '', time: '', type: '' });
+      alert(`Successfully booked a visit with ${selectedDoctor} for ${formattedDate}! Check your Appointments tab.`);
+      setIsModalOpen(false);
+      setNewApt({ date: '', time: '', type: '' });
+    } catch (error) {
+      console.error("Booking failed", error);
+    }
   };
 
   return (
@@ -84,13 +79,13 @@ const Doctors = ({ lang, appointments, setAppointments }) => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-        {directory.map((doc, i) => (
+        {doctors.map((doc, i) => (
           <div key={i} className="glass-card" style={{ padding: '2rem' }}>
             <div style={{ width: '60px', height: '60px', backgroundColor: 'var(--primary-dark)', borderRadius: '50%', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--bg-main)', fontWeight: 'bold' }}>
               {doc.name.split(' ').map(n => n[0]).join('')}
             </div>
             <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', marginBottom: '0.25rem' }}>{doc.name}</h3>
-            <p style={{ color: 'var(--primary)', fontWeight: '600', fontSize: '0.85rem', marginBottom: '1rem' }}>{doc.spec} • {doc.exp}</p>
+            <p style={{ color: 'var(--primary)', fontWeight: '600', fontSize: '0.85rem', marginBottom: '1rem' }}>{doc.specialization} • {doc.experience}</p>
             
             <button 
               onClick={() => handleOpenBooking(doc.name)}
