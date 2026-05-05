@@ -21,8 +21,21 @@ def read_appointments(skip: int = 0, limit: int = 100, db: Session = Depends(get
 
 @router.post("/", response_model=schemas.Appointment)
 def create_appointment(appointment: schemas.AppointmentCreate, db: Session = Depends(get_db)):
+    # 1. Create the appointment
     db_appointment = models.Appointment(**appointment.dict())
     db.add(db_appointment)
+    
+    # 2. Automatically create a billing entry (Automated DBMS logic)
+    import random
+    new_invoice = models.Billing(
+        invoice_id=f"INV-{random.randint(10000, 99999)}",
+        date=appointment.date,
+        service=f"Consultation: {appointment.type}",
+        amount="₹500.00",  # Standard base fee
+        status="Pending"
+    )
+    db.add(new_invoice)
+    
     db.commit()
     db.refresh(db_appointment)
     return db_appointment

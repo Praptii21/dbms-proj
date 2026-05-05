@@ -7,17 +7,23 @@ import api from '../api/axios';
 const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
   const t = (key) => getTranslation(lang, 'billing', key);
   const [editInvoice, setEditInvoice] = useState(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newInvoice, setNewInvoice] = useState({
+    invoice_id: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
+    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    service: '',
+    amount: '₹0.00',
+    status: 'Pending'
+  });
 
   const handlePayment = async () => {
     if (balance > 0) {
       try {
-        // Find all pending invoices
         const pending = invoices.filter(inv => inv.status !== 'Paid');
         await Promise.all(pending.map(inv => 
           api.put(`/api/billing/${inv.id}`, { ...inv, status: 'Paid' })
         ));
         
-        // Refresh balance and invoices from server
         const [billingRes, balanceRes] = await Promise.all([
           api.get('/api/billing/'),
           api.get('/api/billing/balance')
@@ -47,13 +53,34 @@ const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await api.post('/api/billing/', newInvoice);
+      setInvoices([...invoices, response.data]);
+      
+      const balanceRes = await api.get('/api/billing/balance');
+      setBalance(balanceRes.data.balance);
+      
+      setIsAddModalOpen(false);
+      setNewInvoice({
+        invoice_id: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        service: '',
+        amount: '₹0.00',
+        status: 'Pending'
+      });
+    } catch (error) {
+      console.error("Failed to add invoice", error);
+    }
+  };
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
       const response = await api.put(`/api/billing/${editInvoice.id}`, editInvoice);
       setInvoices(invoices.map(inv => inv.id === editInvoice.id ? response.data : inv));
       
-      // Refresh balance
       const balanceRes = await api.get('/api/billing/balance');
       setBalance(balanceRes.data.balance);
       setEditInvoice(null);
@@ -65,6 +92,43 @@ const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
   return (
     <div className="animate-fade-in" style={{ position: 'relative' }}>
       
+      {/* Add Invoice Modal */}
+      {isAddModalOpen && createPortal(
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent} className="animate-fade-in">
+            <h2 style={{ marginBottom: '1.5rem', color: 'var(--primary-dark)' }}>Create New Invoice</h2>
+            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={styles.label}>Invoice ID (Auto-generated)</label>
+                <input type="text" style={{...styles.input, backgroundColor: '#f3f4f6'}} value={newInvoice.invoice_id} readOnly />
+              </div>
+              <div>
+                <label style={styles.label}>Service Provided</label>
+                <input type="text" style={styles.input} value={newInvoice.service} onChange={(e) => setNewInvoice({...newInvoice, service: e.target.value})} placeholder="e.g. General Consultation" required />
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Amount (e.g. ₹150.00)</label>
+                  <input type="text" style={styles.input} value={newInvoice.amount} onChange={(e) => setNewInvoice({...newInvoice, amount: e.target.value})} placeholder="₹" required />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Initial Status</label>
+                  <select style={styles.input} value={newInvoice.status} onChange={(e) => setNewInvoice({...newInvoice, status: e.target.value})}>
+                    <option>Pending</option>
+                    <option>Paid</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" style={styles.confirmBtn}>Create Invoice</button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Invoice Edit Modal */}
       {editInvoice !== null && createPortal(
         <div style={styles.modalOverlay}>
@@ -99,9 +163,12 @@ const Billing = ({ balance, setBalance, invoices, setInvoices, lang }) => {
         document.body
       )}
 
-      <div className="page-header">
-        <h1 className="page-title">{t('title')}</h1>
-        <p className="page-subtitle">{t('subtitle')}</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 className="page-title">{t('title')}</h1>
+          <p className="page-subtitle">{t('subtitle')}</p>
+        </div>
+        <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>+ New Invoice</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2rem' }}>
@@ -144,3 +211,4 @@ const styles = {
 };
 
 export default Billing;
+
