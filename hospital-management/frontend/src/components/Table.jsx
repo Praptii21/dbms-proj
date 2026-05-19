@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Table = ({ data, onEdit }) => {
+const Table = ({ data, onEdit, onDelete }) => {
   if (!data || data.length === 0) {
     return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No data available.</div>;
   }
@@ -9,7 +9,7 @@ const Table = ({ data, onEdit }) => {
 
   // Hooking straight into our new dynamic CSS variables mapped securely in index.css
   const getStatusColor = (status) => {
-    switch(status.toLowerCase()) {
+    switch(status?.toLowerCase()) {
       case 'admitted': return { bg: 'var(--badge-success-bg)', text: 'var(--badge-success-text)' };
       case 'paid': return { bg: 'var(--badge-success-bg)', text: 'var(--badge-success-text)' };
       
@@ -36,7 +36,7 @@ const Table = ({ data, onEdit }) => {
                 {col.toUpperCase()}
               </th>
             ))}
-            {onEdit && <th style={styles.th}>ACTIONS</th>}
+            {(onEdit || onDelete) && <th style={styles.th}>ACTIONS</th>}
           </tr>
         </thead>
         <tbody>
@@ -57,9 +57,16 @@ const Table = ({ data, onEdit }) => {
                   )}
                 </td>
               ))}
-              {onEdit && (
+              {(onEdit || onDelete) && (
                 <td style={styles.td}>
-                  <button onClick={() => onEdit(row)} style={styles.actionBtn}>Edit</button>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    {onEdit && (
+                      <button onClick={() => onEdit(row)} style={styles.actionBtn}>Edit</button>
+                    )}
+                    {onDelete && (
+                      <button onClick={() => onDelete(row)} style={styles.deleteBtn}>Delete</button>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>
@@ -77,7 +84,8 @@ const styles = {
   tr: { borderTop: '1px solid var(--border)' },
   td: { padding: '1rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem' },
   statusBadge: { padding: '0.35rem 0.65rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', display: 'inline-block', letterSpacing: '0.5px', textTransform: 'uppercase' },
-  actionBtn: { color: 'var(--primary)', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer' }
+  actionBtn: { color: 'var(--primary)', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer', background: 'none', border: 'none' },
+  deleteBtn: { color: 'var(--badge-danger-bg)', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer', background: 'none', border: 'none' }
 };
 
 export default Table;

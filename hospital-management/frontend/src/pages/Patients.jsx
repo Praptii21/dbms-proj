@@ -30,6 +30,18 @@ const Patients = ({ patients, setPatients, lang }) => {
     }
   };
 
+  const handleDeletePatient = async (patient) => {
+    if (!window.confirm(`Are you sure you want to delete patient ${patient.name}?`)) return;
+
+    try {
+      await api.delete(`/api/patients/${patient.id}`);
+      setPatients(patients.filter(p => p.id !== patient.id));
+    } catch (error) {
+      console.error("Error deleting patient:", error);
+      alert("Failed to delete patient from database.");
+    }
+  };
+
   return (
     <div className="animate-fade-in" style={{ position: 'relative' }}>
       
@@ -97,7 +109,7 @@ const Patients = ({ patients, setPatients, lang }) => {
       </div>
 
       <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-        <Table data={patients} />
+        <Table data={patients} onDelete={handleDeletePatient} />
       </div>
     </div>
   );

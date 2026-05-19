@@ -1,58 +1,109 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+import sqlite3
 from typing import List
-import models, schemas
-from database import SessionLocal, engine
+import schemas
+import os
 
 router = APIRouter()
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Path to database
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "hospital.db")
 
-def seed_billing(db: Session):
-    if db.query(models.Billing).count() == 0:
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def seed_billing():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM billing")
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
         invoices = [
-            {"invoice_id": "INV-29001", "date": "Sep 14, 2024", "service": "General Consultation", "amount": "₹1200.00", "status": "Paid"},
-            {"invoice_id": "INV-29084", "date": "Oct 02, 2024", "service": "Blood Work Panel", "amount": "₹15200.00", "status": "Pending"}
+            ("INV-29001", "Sep 14, 2024", "General Consultation", "₹1200.00", "Paid"),
+            ("INV-29084", "Oct 02, 2024", "Blood Work Panel", "₹15200.00", "Pending")
         ]
-        for inv in invoices:
-            db_inv = models.Billing(**inv)
-            db.add(db_inv)
-        db.commit()
+        cursor.executemany(
+            "INSERT INTO billing (invoice_id, date, service, amount, status) VALUES (?, ?, ?, ?, ?)",
+            invoices
+        )
+        conn.commit()
+    conn.close()
 
 @router.get("/", response_model=List[schemas.Billing])
-def read_billing(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    seed_billing(db)
-    billing = db.query(models.Billing).offset(skip).limit(limit).all()
-    return billing
+def read_billing(skip: int = 0, limit: int = 100):
+    seed_billing()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM billing LIMIT ? OFFSET ?", (limit, skip))
+    billing = cursor.fetchall()
+    
+    conn.close()
+    return [dict(row) for row in billing]
 
 @router.post("/", response_model=schemas.Billing)
-def create_billing(billing: schemas.BillingCreate, db: Session = Depends(get_db)):
-    db_billing = models.Billing(**billing.dict())
-    db.add(db_billing)
-    db.commit()
-    db.refresh(db_billing)
-    return db_billing
+def create_billing(billing: schemas.BillingCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "INSERT INTO billing (invoice_id, date, service, amount, status) VALUES (?, ?, ?, ?, ?)",
+        (billing.invoice_id, billing.date, billing.service, billing.amount, billing.status)
+    )
+    
+    billing_id = cursor.lastrowid
+    conn.commit()
+    
+    cursor.execute("SELECT * FROM billing WHERE id = ?", (billing_id,))
+    new_billing = cursor.fetchone()
+    
+    conn.close()
+    return dict(new_billing)
 
 @router.put("/{billing_id}", response_model=schemas.Billing)
-def update_billing(billing_id: int, billing: schemas.BillingCreate, db: Session = Depends(get_db)):
-    db_billing = db.query(models.Billing).filter(models.Billing.id == billing_id).first()
-    if not db_billing:
+def update_billing(billing_id: int, billing: schemas.BillingCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM billing WHERE id = ?", (billing_id,))
+    inv = cursor.fetchone()
+    
+    if not inv:
+        conn.close()
         raise HTTPException(status_code=404, detail="Invoice not found")
-    for var, value in vars(billing).items():
-        setattr(db_billing, var, value) if value else None
-    db.commit()
-    db.refresh(db_billing)
-    return db_billing
+        
+    cursor.execute(
+        "UPDATE billing SET invoice_id = ?, date = ?, service = ?, amount = ?, status = ? WHERE id = ?",
+        (billing.invoice_id, billing.date, billing.service, billing.amount, billing.status, billing_id)
+    )
+    conn.commit()
+    
+    cursor.execute("SELECT * FROM billing WHERE id = ?", (billing_id,))
+    updated_billing = cursor.fetchone()
+    
+    conn.close()
+    return dict(updated_billing)
 
 @router.get("/balance")
-def get_balance(db: Session = Depends(get_db)):
-    seed_billing(db)
-    invoices = db.query(models.Billing).filter(models.Billing.status != "Paid").all()
-    total_balance = sum(float(inv.amount.replace('₹', '').replace(',', '')) for inv in invoices)
+def get_balance():
+    seed_billing()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT amount FROM billing WHERE status != 'Paid'")
+    invoices = cursor.fetchall()
+    
+    total_balance = 0
+    for inv in invoices:
+        amount_str = inv['amount'].replace('₹', '').replace(',', '')
+        try:
+            total_balance += float(amount_str)
+        except ValueError:
+            continue
+            
+    conn.close()
     return {"balance": total_balance}

@@ -1,56 +1,92 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+import sqlite3
 from typing import List
-import models, schemas
-from database import SessionLocal, engine
+import schemas
+import os
 
 router = APIRouter()
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Path to database
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "hospital.db")
 
-def seed_doctors(db: Session):
-    if db.query(models.Doctor).count() == 0:
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def seed_doctors():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM doctors")
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
         directory = [
-            {"name": "Dr. Sarah Jenkins", "specialization": "Cardiology", "experience": "15 Years", "status": "Available"},
-            {"name": "Dr. Marcus Webb", "specialization": "Neurology", "experience": "11 Years", "status": "Booked"},
-            {"name": "Dr. Alyssa Chen", "specialization": "Pediatrics", "experience": "8 Years", "status": "Available"},
-            {"name": "Dr. Robert Frost", "specialization": "Orthopedics", "experience": "22 Years", "status": "Available"},
-            {"name": "Dr. Emily Carter", "specialization": "Dermatology", "experience": "12 Years", "status": "Booked"},
-            {"name": "Dr. James Mitchell", "specialization": "General Surgery", "experience": "19 Years", "status": "Available"},
-            {"name": "Dr. Priya Sharma", "specialization": "Oncology", "experience": "14 Years", "status": "Booked"},
-            {"name": "Dr. David Kim", "specialization": "Psychiatry", "experience": "9 Years", "status": "Available"}
+            ("Dr. Sarah Jenkins", "Cardiology", "15 Years", "Available"),
+            ("Dr. Marcus Webb", "Neurology", "11 Years", "Booked"),
+            ("Dr. Alyssa Chen", "Pediatrics", "8 Years", "Available"),
+            ("Dr. Robert Frost", "Orthopedics", "22 Years", "Available"),
+            ("Dr. Emily Carter", "Dermatology", "12 Years", "Booked"),
+            ("Dr. James Mitchell", "General Surgery", "19 Years", "Available"),
+            ("Dr. Priya Sharma", "Oncology", "14 Years", "Booked"),
+            ("Dr. David Kim", "Psychiatry", "9 Years", "Available")
         ]
-        for doc in directory:
-            db_doc = models.Doctor(**doc)
-            db.add(db_doc)
-        db.commit()
+        cursor.executemany(
+            "INSERT INTO doctors (name, specialization, experience, status) VALUES (?, ?, ?, ?)",
+            directory
+        )
+        conn.commit()
+    conn.close()
 
 @router.get("/", response_model=List[schemas.Doctor])
-def read_doctors(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    seed_doctors(db)
-    doctors = db.query(models.Doctor).offset(skip).limit(limit).all()
-    return doctors
+def read_doctors(skip: int = 0, limit: int = 100):
+    seed_doctors()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM doctors LIMIT ? OFFSET ?", (limit, skip))
+    doctors = cursor.fetchall()
+    
+    conn.close()
+    return [dict(row) for row in doctors]
 
 @router.post("/", response_model=schemas.Doctor)
-def create_doctor(doctor: schemas.DoctorCreate, db: Session = Depends(get_db)):
-    db_doctor = models.Doctor(**doctor.dict())
-    db.add(db_doctor)
-    db.commit()
-    db.refresh(db_doctor)
-    return db_doctor
+def create_doctor(doctor: schemas.DoctorCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "INSERT INTO doctors (name, specialization, experience, status) VALUES (?, ?, ?, ?)",
+        (doctor.name, doctor.specialization, doctor.experience, doctor.status)
+    )
+    
+    doc_id = cursor.lastrowid
+    conn.commit()
+    
+    cursor.execute("SELECT * FROM doctors WHERE id = ?", (doc_id,))
+    new_doc = cursor.fetchone()
+    
+    conn.close()
+    return dict(new_doc)
 
 @router.put("/{doctor_id}", response_model=schemas.Doctor)
-def update_doctor_status(doctor_id: int, status: str, db: Session = Depends(get_db)):
-    db_doctor = db.query(models.Doctor).filter(models.Doctor.id == doctor_id).first()
-    if not db_doctor:
+def update_doctor_status(doctor_id: int, status: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,))
+    doc = cursor.fetchone()
+    
+    if not doc:
+        conn.close()
         raise HTTPException(status_code=404, detail="Doctor not found")
-    db_doctor.status = status
-    db.commit()
-    db.refresh(db_doctor)
-    return db_doctor
+        
+    cursor.execute("UPDATE doctors SET status = ? WHERE id = ?", (status, doctor_id))
+    conn.commit()
+    
+    cursor.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,))
+    updated_doc = cursor.fetchone()
+    
+    conn.close()
+    return dict(updated_doc)

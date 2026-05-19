@@ -1,40 +1,64 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+import sqlite3
 from typing import List
-import models, schemas
-from database import SessionLocal, engine
-
-# Create tables
-models.Base.metadata.create_all(bind=engine)
+import schemas
+import os
 
 router = APIRouter()
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Path to database
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "hospital.db")
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 @router.get("/", response_model=List[schemas.Patient])
-def read_patients(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    patients = db.query(models.Patient).offset(skip).limit(limit).all()
-    return patients
+def read_patients(skip: int = 0, limit: int = 100):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    query = "SELECT * FROM patients LIMIT ? OFFSET ?"
+    cursor.execute(query, (limit, skip))
+    patients = cursor.fetchall()
+    
+    conn.close()
+    return [dict(row) for row in patients]
 
 @router.post("/", response_model=schemas.Patient)
-def create_patient(patient: schemas.PatientCreate, db: Session = Depends(get_db)):
-    db_patient = models.Patient(**patient.dict())
-    db.add(db_patient)
-    db.commit()
-    db.refresh(db_patient)
-    return db_patient
+def create_patient(patient: schemas.PatientCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    query = "INSERT INTO patients (name, age, gender, status, ward) VALUES (?, ?, ?, ?, ?)"
+    cursor.execute(query, (patient.name, patient.age, patient.gender, patient.status, patient.ward))
+    
+    patient_id = cursor.lastrowid
+    conn.commit()
+    
+    # Fetch the newly created patient
+    cursor.execute("SELECT * FROM patients WHERE id = ?", (patient_id,))
+    new_patient = cursor.fetchone()
+    
+    conn.close()
+    return dict(new_patient)
 
 @router.delete("/{patient_id}")
-def delete_patient(patient_id: int, db: Session = Depends(get_db)):
-    db_patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
-    if not db_patient:
+def delete_patient(patient_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if exists
+    cursor.execute("SELECT * FROM patients WHERE id = ?", (patient_id,))
+    patient = cursor.fetchone()
+    
+    if not patient:
+        conn.close()
         raise HTTPException(status_code=404, detail="Patient not found")
-    db.delete(db_patient)
-    db.commit()
+        
+    cursor.execute("DELETE FROM patients WHERE id = ?", (patient_id,))
+    conn.commit()
+    conn.close()
+    
     return {"message": "Patient deleted successfully"}

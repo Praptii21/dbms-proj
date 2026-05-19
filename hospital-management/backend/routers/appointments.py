@@ -1,61 +1,101 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+import sqlite3
 from typing import List
-import models, schemas
-from database import SessionLocal, engine
+import schemas
+import os
+import random
 
 router = APIRouter()
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Path to database
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "hospital.db")
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 @router.get("/", response_model=List[schemas.Appointment])
-def read_appointments(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    appointments = db.query(models.Appointment).offset(skip).limit(limit).all()
-    return appointments
+def read_appointments(skip: int = 0, limit: int = 100):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM appointments LIMIT ? OFFSET ?", (limit, skip))
+    appointments = cursor.fetchall()
+    
+    conn.close()
+    return [dict(row) for row in appointments]
 
 @router.post("/", response_model=schemas.Appointment)
-def create_appointment(appointment: schemas.AppointmentCreate, db: Session = Depends(get_db)):
-    # 1. Create the appointment
-    db_appointment = models.Appointment(**appointment.dict())
-    db.add(db_appointment)
+def create_appointment(appointment: schemas.AppointmentCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
-    # 2. Automatically create a billing entry (Automated DBMS logic)
-    import random
-    new_invoice = models.Billing(
-        invoice_id=f"INV-{random.randint(10000, 99999)}",
-        date=appointment.date,
-        service=f"Consultation: {appointment.type}",
-        amount="₹500.00",  # Standard base fee
-        status="Pending"
-    )
-    db.add(new_invoice)
-    
-    db.commit()
-    db.refresh(db_appointment)
-    return db_appointment
+    try:
+        # 1. Create the appointment
+        cursor.execute(
+            "INSERT INTO appointments (date, time, doctor, type, status) VALUES (?, ?, ?, ?, ?)",
+            (appointment.date, appointment.time, appointment.doctor, appointment.type, appointment.status or "Active")
+        )
+        appointment_id = cursor.lastrowid
+        
+        # 2. Automatically create a billing entry (Automated DBMS logic)
+        invoice_id = f"INV-{random.randint(10000, 99999)}"
+        cursor.execute(
+            "INSERT INTO billing (invoice_id, date, service, amount, status) VALUES (?, ?, ?, ?, ?)",
+            (invoice_id, appointment.date, f"Consultation: {appointment.type}", "₹500.00", "Pending")
+        )
+        
+        conn.commit()
+        
+        cursor.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,))
+        new_appointment = cursor.fetchone()
+        
+        conn.close()
+        return dict(new_appointment)
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{appointment_id}", response_model=schemas.Appointment)
-def update_appointment(appointment_id: int, appointment: schemas.AppointmentCreate, db: Session = Depends(get_db)):
-    db_appointment = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
-    if not db_appointment:
+def update_appointment(appointment_id: int, appointment: schemas.AppointmentCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,))
+    apt = cursor.fetchone()
+    
+    if not apt:
+        conn.close()
         raise HTTPException(status_code=404, detail="Appointment not found")
-    for var, value in vars(appointment).items():
-        setattr(db_appointment, var, value) if value else None
-    db.commit()
-    db.refresh(db_appointment)
-    return db_appointment
+        
+    cursor.execute(
+        "UPDATE appointments SET date = ?, time = ?, doctor = ?, type = ?, status = ? WHERE id = ?",
+        (appointment.date, appointment.time, appointment.doctor, appointment.type, appointment.status, appointment_id)
+    )
+    conn.commit()
+    
+    cursor.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,))
+    updated_appointment = cursor.fetchone()
+    
+    conn.close()
+    return dict(updated_appointment)
 
 @router.delete("/{appointment_id}")
-def delete_appointment(appointment_id: int, db: Session = Depends(get_db)):
-    db_appointment = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
-    if not db_appointment:
+def delete_appointment(appointment_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,))
+    apt = cursor.fetchone()
+    
+    if not apt:
+        conn.close()
         raise HTTPException(status_code=404, detail="Appointment not found")
-    db.delete(db_appointment)
-    db.commit()
+        
+    cursor.execute("DELETE FROM appointments WHERE id = ?", (appointment_id,))
+    conn.commit()
+    conn.close()
+    
     return {"message": "Appointment deleted successfully"}
