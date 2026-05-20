@@ -23,41 +23,96 @@
 
 ## 1b. Entity-Relationship (ER) Diagram
 
+### Chen-Notation ER Diagram (Traditional)
+
+```mermaid
+graph TB
+    %% ===== PATIENTS Entity =====
+    P_id([id PK]):::attr --- PATIENTS[PATIENTS]:::entity
+    P_name([name]):::attr --- PATIENTS
+    P_age([age]):::attr --- PATIENTS
+    P_gender([gender]):::attr --- PATIENTS
+    P_status([status]):::attr --- PATIENTS
+    P_ward([ward]):::attr --- PATIENTS
+
+    %% ===== DOCTORS Entity =====
+    D_id([id PK]):::attr --- DOCTORS[DOCTORS]:::entity
+    D_name([name]):::attr --- DOCTORS
+    D_spec([specialization]):::attr --- DOCTORS
+    D_exp([experience]):::attr --- DOCTORS
+    D_status([status]):::attr --- DOCTORS
+
+    %% ===== APPOINTMENTS Entity =====
+    A_id([id PK]):::attr --- APPOINTMENTS[APPOINTMENTS]:::entity
+    A_date([date]):::attr --- APPOINTMENTS
+    A_time([time]):::attr --- APPOINTMENTS
+    A_doctor([doctor]):::attr --- APPOINTMENTS
+    A_type([type]):::attr --- APPOINTMENTS
+    A_status([status]):::attr --- APPOINTMENTS
+
+    %% ===== BILLING Entity =====
+    B_id([id PK]):::attr --- BILLING[BILLING]:::entity
+    B_inv([invoice_id UK]):::attr --- BILLING
+    B_date([date]):::attr --- BILLING
+    B_service([service]):::attr --- BILLING
+    B_amount([amount]):::attr --- BILLING
+    B_status([status]):::attr --- BILLING
+
+    %% ===== Relationships =====
+    PATIENTS --- R1{Has}:::rel
+    R1 --- APPOINTMENTS
+
+    DOCTORS --- R2{Consulted In}:::rel
+    R2 --- APPOINTMENTS
+
+    APPOINTMENTS --- R3{Generates}:::rel
+    R3 --- BILLING
+
+    %% ===== Styles =====
+    classDef entity fill:#2563eb,color:#fff,stroke:#1e40af,stroke-width:2px,font-weight:bold
+    classDef attr fill:#f1f5f9,color:#1e293b,stroke:#94a3b8,stroke-width:1px
+    classDef rel fill:#fff,color:#2563eb,stroke:#2563eb,stroke-width:2px,font-weight:bold
+```
+
+**Legend:** 🟦 Rectangles = Entities | ⬭ Rounded boxes = Attributes (`PK` = Primary Key, `UK` = Unique Key) | ◇ Diamonds = Relationships
+
+### Relational Schema Diagram (Table Format with Keys)
+
 ```mermaid
 erDiagram
     PATIENTS {
-        int id PK "Primary Key, Auto-increment"
-        string name "Patient full name"
-        int age "Patient age"
-        string gender "Male / Female / Other"
-        string status "Triage / Admitted / Discharged"
-        string ward "General / Cardiology / ICU / etc."
+        int id PK "Auto-increment"
+        string name "Indexed"
+        int age ""
+        string gender ""
+        string status "Default: Triage"
+        string ward "Default: General"
     }
 
     DOCTORS {
-        int id PK "Primary Key, Auto-increment"
-        string name "Doctor full name"
-        string specialization "Cardiology, Neurology, etc."
-        string experience "e.g. 15 Years"
-        string status "Available / Booked"
+        int id PK "Auto-increment"
+        string name "Indexed"
+        string specialization ""
+        string experience ""
+        string status "Default: Available"
     }
 
     APPOINTMENTS {
-        int id PK "Primary Key, Auto-increment"
-        string date "Appointment date (YYYY-MM-DD)"
-        string time "Appointment time (HH:MM)"
-        string doctor "Doctor name (references doctors.name)"
-        string type "Check-up / Follow-up / Emergency / etc."
-        string status "Active / Completed / Cancelled"
+        int id PK "Auto-increment"
+        string date ""
+        string time ""
+        string doctor "Ref: doctors.name"
+        string type ""
+        string status "Default: Active"
     }
 
     BILLING {
-        int id PK "Primary Key, Auto-increment"
-        string invoice_id UK "Unique invoice ID (INV-XXXXX)"
-        string date "Billing date (YYYY-MM-DD)"
-        string service "Description of service"
-        string amount "Amount in ₹ (e.g. ₹500.00)"
-        string status "Pending / Paid / Overdue"
+        int id PK "Auto-increment"
+        string invoice_id UK "Unique, Indexed"
+        string date ""
+        string service ""
+        string amount ""
+        string status ""
     }
 
     DOCTORS ||--o{ APPOINTMENTS : "consulted in"
