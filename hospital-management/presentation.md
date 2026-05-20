@@ -21,6 +21,113 @@
 
 ---
 
+## 1b. Entity-Relationship (ER) Diagram
+
+```mermaid
+erDiagram
+    PATIENTS {
+        int id PK "Primary Key, Auto-increment"
+        string name "Patient full name"
+        int age "Patient age"
+        string gender "Male / Female / Other"
+        string status "Triage / Admitted / Discharged"
+        string ward "General / Cardiology / ICU / etc."
+    }
+
+    DOCTORS {
+        int id PK "Primary Key, Auto-increment"
+        string name "Doctor full name"
+        string specialization "Cardiology, Neurology, etc."
+        string experience "e.g. 15 Years"
+        string status "Available / Booked"
+    }
+
+    APPOINTMENTS {
+        int id PK "Primary Key, Auto-increment"
+        string date "Appointment date (YYYY-MM-DD)"
+        string time "Appointment time (HH:MM)"
+        string doctor "Doctor name (references doctors.name)"
+        string type "Check-up / Follow-up / Emergency / etc."
+        string status "Active / Completed / Cancelled"
+    }
+
+    BILLING {
+        int id PK "Primary Key, Auto-increment"
+        string invoice_id UK "Unique invoice ID (INV-XXXXX)"
+        string date "Billing date (YYYY-MM-DD)"
+        string service "Description of service"
+        string amount "Amount in ₹ (e.g. ₹500.00)"
+        string status "Pending / Paid / Overdue"
+    }
+
+    DOCTORS ||--o{ APPOINTMENTS : "consulted in"
+    APPOINTMENTS ||--|| BILLING : "auto-generates"
+    PATIENTS }o--o{ APPOINTMENTS : "may have"
+```
+
+### Relationship Details
+
+| Relationship | Type | Description |
+|---|---|---|
+| **Doctors → Appointments** | One-to-Many | A doctor can have many appointments; `appointments.doctor` stores the doctor's name |
+| **Appointments → Billing** | One-to-One (Auto) | Every new appointment **automatically creates** a billing entry in the same transaction (`appointments.py` L42–47) |
+| **Patients ↔ Appointments** | Many-to-Many (Logical) | Patients are associated with appointments through the UI workflow; no direct FK in the current schema |
+
+> **Note:** The current schema uses **doctor name** (string) as the link between `appointments` and `doctors` rather than a foreign key ID. This is a design choice for simplicity in this project.
+
+---
+
+## 1c. Sample Data (All 4 Tables)
+
+### 🧑‍🤒 `patients` Table — Sample Data
+
+| id | name | age | gender | status | ward |
+|----|------|-----|--------|--------|------|
+| 1 | Rahul Verma | 34 | Male | Admitted | Cardiology |
+| 2 | Sneha Kapoor | 28 | Female | Triage | General |
+| 3 | Arjun Mehta | 52 | Male | Discharged | Orthopedics |
+| 4 | Priya Nair | 41 | Female | Admitted | ICU |
+| 5 | Aditya Sharma | 19 | Male | Triage | General |
+
+### 👨‍⚕️ `doctors` Table — Sample Data (Seeded)
+
+| id | name | specialization | experience | status |
+|----|------|----------------|------------|--------|
+| 1 | Dr. Sarah Jenkins | Cardiology | 15 Years | Available |
+| 2 | Dr. Marcus Webb | Neurology | 11 Years | Booked |
+| 3 | Dr. Alyssa Chen | Pediatrics | 8 Years | Available |
+| 4 | Dr. Robert Frost | Orthopedics | 22 Years | Available |
+| 5 | Dr. Emily Carter | Dermatology | 12 Years | Booked |
+| 6 | Dr. James Mitchell | General Surgery | 19 Years | Available |
+| 7 | Dr. Priya Sharma | Oncology | 14 Years | Booked |
+| 8 | Dr. David Kim | Psychiatry | 9 Years | Available |
+
+> These 8 rows are **auto-seeded** by `doctors.py` Lines 17–40 when the table is empty.
+
+### 📅 `appointments` Table — Sample Data
+
+| id | date | time | doctor | type | status |
+|----|------|------|--------|------|--------|
+| 1 | 2026-05-20 | 10:00 | Dr. Sarah Jenkins | Check-up | Active |
+| 2 | 2026-05-20 | 11:30 | Dr. Marcus Webb | Follow-up | Active |
+| 3 | 2026-05-21 | 09:00 | Dr. Robert Frost | Emergency | Completed |
+| 4 | 2026-05-22 | 14:00 | Dr. Alyssa Chen | Consultation | Active |
+| 5 | 2026-05-23 | 16:30 | Dr. Emily Carter | Check-up | Cancelled |
+
+### 💰 `billing` Table — Sample Data (Auto-generated)
+
+| id | invoice_id | date | service | amount | status |
+|----|------------|------|---------|--------|--------|
+| 1 | INV-48271 | 2026-05-20 | Consultation: Check-up | ₹500.00 | Pending |
+| 2 | INV-63150 | 2026-05-20 | Consultation: Follow-up | ₹500.00 | Paid |
+| 3 | INV-91742 | 2026-05-21 | Consultation: Emergency | ₹500.00 | Pending |
+| 4 | INV-35489 | 2026-05-22 | Consultation: Consultation | ₹500.00 | Pending |
+| 5 | INV-72316 | 2026-05-23 | Consultation: Check-up | ₹500.00 | Overdue |
+
+> Each billing row is **auto-created** when an appointment is booked. The `service` field is set to `"Consultation: {appointment.type}"` and the amount defaults to `₹500.00`.
+
+---
+
 ## 2. Data Flow: Frontend → Backend → Database (THE KEY ANSWER)
 
 ### Example: **Adding a New Patient**
